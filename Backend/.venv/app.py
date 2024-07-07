@@ -2,7 +2,7 @@ from flask import Flask, request, send_file
 from flask_cors import CORS
 import os
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from transformers import AutoModelForObjectDetection, TableTransformerForObjectDetection
@@ -11,7 +11,7 @@ import numpy as np
 import easyocr
 import pandas as pd
 from tqdm.auto import tqdm
-import csv
+import openpyxl
 
 app = Flask(__name__)
 CORS(app)
@@ -31,7 +31,6 @@ def initialize_models():
 
 # Call the initialization function
 initialize_models()
-
 
 class MaxResize(object):
     def __init__(self, max_size=800):
@@ -71,57 +70,7 @@ def outputs_to_objects(outputs, img_size, id2label):
 
     return objects
 
-def visualize_detected_tables(img, det_tables, out_path=None):
-    plt.imshow(img, interpolation="lanczos")
-    fig = plt.gcf()
-    fig.set_size_inches(20, 20)
-    ax = plt.gca()
-
-    for det_table in det_tables:
-        bbox = det_table['bbox']
-        if det_table['label'] == 'table':
-            facecolor = (1, 0, 0.45)
-            edgecolor = (1, 0, 0.45)
-            alpha = 0.3
-            linewidth = 2
-            hatch = '//////'
-        elif det_table['label'] == 'table rotated':
-            facecolor = (0.95, 0.6, 0.1)
-            edgecolor = (0.95, 0.6, 0.1)
-            alpha = 0.3
-            linewidth = 2
-            hatch = '//////'
-        else:
-            continue
-
-        rect = patches.Rectangle(bbox[:2], bbox[2] - bbox[0], bbox[3] - bbox[1], linewidth=linewidth,
-                                 edgecolor='none', facecolor=facecolor, alpha=0.1)
-        ax.add_patch(rect)
-        rect = patches.Rectangle(bbox[:2], bbox[2] - bbox[0], bbox[3] - bbox[1], linewidth=linewidth,
-                                 edgecolor=edgecolor, facecolor='none', linestyle='-', alpha=alpha)
-        ax.add_patch(rect)
-        rect = patches.Rectangle(bbox[:2], bbox[2] - bbox[0], bbox[3] - bbox[1], linewidth=0,
-                                 edgecolor=edgecolor, facecolor='none', linestyle='-', hatch=hatch, alpha=0.2)
-        ax.add_patch(rect)
-
-    plt.xticks([], [])
-    plt.yticks([], [])
-
-    legend_elements = [Patch(facecolor=(1, 0, 0.45), edgecolor=(1, 0, 0.45),
-                             label='Table', hatch='//////', alpha=0.3),
-                       Patch(facecolor=(0.95, 0.6, 0.1), edgecolor=(0.95, 0.6, 0.1),
-                             label='Table (rotated)', hatch='//////', alpha=0.3)]
-    plt.legend(handles=legend_elements, bbox_to_anchor=(0.5, -0.02), loc='upper center', borderaxespad=0,
-               fontsize=10, ncol=2)
-    plt.gcf().set_size_inches(10, 10)
-    plt.axis('off')
-
-    if out_path is not None:
-        plt.savefig(out_path, bbox_inches='tight', dpi=150)
-
-    return fig
-
-def objects_to_crops(img, tokens, objects, class_thresholds, padding=10):
+def objects_to_crops(img, tokens, objects, class_thresholds, padding=50):
     table_crops = []
     for obj in objects:
         if obj['score'] < class_thresholds[obj['label']]:
@@ -178,7 +127,6 @@ def get_cell_coordinates_by_row(table_data):
     cell_coordinates.sort(key=lambda x: x['row'][1])
     return cell_coordinates
 
-
 def apply_ocr(cropped_table, cell_coordinates):
     reader = easyocr.Reader(['en'])
     data = {}
@@ -205,6 +153,20 @@ def apply_ocr(cropped_table, cell_coordinates):
         data[row] = row_data
 
     return data
+
+def save_as_xlsx(data):
+    output_xlsx = os.path.join("output", "output.xlsx")
+    
+    # Create a workbook and add a worksheet
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+
+    # Write data to the worksheet
+    for row, row_text in data.items():
+        worksheet.append(row_text)
+    
+    # Save the workbook to a file
+    workbook.save(output_xlsx)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -245,7 +207,7 @@ def upload_file():
             "no object": 10
         }
 
-        tables_crops = objects_to_crops(img, tokens, objects, detection_class_thresholds, padding=0)
+        tables_crops = objects_to_crops(img, tokens, objects, detection_class_thresholds, padding=50)
 
         if not tables_crops:
             return 'No tables detected', 400
@@ -272,17 +234,13 @@ def upload_file():
 
         # Pass cropped_table and cell_coordinates to apply_ocr function
         data = apply_ocr(cropped_table, cell_coordinates)
+          
+        # Save as XLSX
+        save_as_xlsx(data)
 
-        # Save CSV
-        output_csv = os.path.join("output", "output.csv")
-        with open(output_csv, 'w') as result_file:
-            wr = csv.writer(result_file, dialect='excel')
-            for row, row_text in data.items():
-                wr.writerow(row_text)
-
-        return send_file(output_csv, as_attachment=True)
-
+        return send_file(os.path.join("output", "output.xlsx"), as_attachment=True)
 
 if __name__ == '__main__':
-    
-     app.run(debug=True, port=5000)
+    if not os.path.exists('output'):
+        os.makedirs('output')
+    app.run(debug=True, port=5000)

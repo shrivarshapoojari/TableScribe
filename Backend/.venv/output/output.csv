@@ -1,8 +1,8 @@
-Salt,ransmittance,,,,
-concentralion (%),Trial #1,Trial #2,Trial #3,Trial #4,Trial #5
-77.23,74.50,64.88,75.27,54.66,
-85.23,92.82,78.91,60.71,57.96,
-88.39,100.05,73.66,66.51,64.54,
-80.71,100.05,68.29,64.91,52.96,
-12,82.66,117.18,71.01,56.91,46.95
-15,72.55,115.40,65.72,66.03,55.38
+Labels,Coca Cola,Diet Coke,Coke Zero,Pepsi,Pepsi Light,Pepsi Max
+Dislike,Like,Dislike,Neutral,Hate,Love,
+Like,Hate,Like,Like,Neutral,Love,
+Like,Love,Dislike,Neutral,Hate,Hate,
+Love,Dislike,Dislike,Dislike,Dislike,Dislike,
+Neutral,Love,Neutral,Neutral,Love,Dislike,
+Don Know,Don Know,Don Know,Don Know,Love,Love,
+Dislike,Neutral,Like,Dislike,Dislike,Dislike,
