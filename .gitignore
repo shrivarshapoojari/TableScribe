@@ -1,0 +1,32 @@
+# Ignore node_modules in frontend
+frontend/node_modules/
+
+# Ignore build artifacts in frontend
+frontend/build/
+
+# Ignore Python virtual environments in backend
+Backend/.venv/
+Backend/venv/
+
+# Ignore __pycache__ directories in backend
+Backend/__pycache__/
+Backend/**/*.pyc
+Backend/**/*.pyo
+
+# Ignore data files
+*.csv
+*.dat
+*.log
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE/editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore environment variables file
+.env
