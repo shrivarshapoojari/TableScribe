@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-
+import axios from 'axios';
 const TableScribe = () => {
     const [selectedFile, setSelectedFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
@@ -19,36 +19,24 @@ const TableScribe = () => {
     };
 
     const handleUpload = async () => {
-        if (!selectedFile) {
-            alert('Please select a file.');
-            return;
-        }
+      const formData = new FormData();
+      formData.append('file', selectedFile);
 
-        // Create FormData object
-        const formData = new FormData();
-        formData.append('image', selectedFile);
-
-        // Replace with your backend endpoint
-        const url = 'https://example.com/upload'; // Replace with your actual backend URL
-
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                body: formData,
-            });
-
-            if (!response.ok) {
-                throw new Error('Upload failed');
-            }
-
-            alert('Upload successful!');
-            // Optionally handle response data here
-        } catch (error) {
-            console.error('Error uploading image:', error);
-            alert('Upload failed. Please try again.');
-        }
-    };
-
+      try {
+          const response = await axios.post('http://127.0.0.1:5000/upload', formData, {
+              responseType: 'blob'
+          });
+          const url = window.URL.createObjectURL(new Blob([response.data]));
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', 'output.csv');
+          document.body.appendChild(link);
+          link.click();
+      } catch (error) {
+          console.error('Error uploading file:', error);
+          alert("error")
+      }
+  };
     const handleRemoveImage = () => {
         setSelectedFile(null);
         setImagePreview(null);
