@@ -5,9 +5,13 @@ frontend/node_modules/
 frontend/build/
 
 # Ignore Python virtual environments in backend
-Backend/.venv/
+Backend/.venv/Include
+Backend/.venv/Lib
+Backend/.venv/Library
+Backend/.venv/Scripts
+Backend/.venv/Share
 Backend/venv/
-
+Backend/.venv/
 # Ignore __pycache__ directories in backend
 Backend/__pycache__/
 Backend/**/*.pyc
