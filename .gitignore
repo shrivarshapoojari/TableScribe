@@ -10,17 +10,15 @@ Backend/.venv/Lib
 Backend/.venv/Library
 Backend/.venv/Scripts
 Backend/.venv/Share
-Backend/venv/
-Backend/.venv/
+ 
+ 
 # Ignore __pycache__ directories in backend
 Backend/__pycache__/
 Backend/**/*.pyc
 Backend/**/*.pyo
 
 # Ignore data files
-*.csv
-*.dat
-*.log
+ 
 
 # Ignore OS generated files
 .DS_Store
