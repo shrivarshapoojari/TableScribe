@@ -7,8 +7,7 @@ const Card = () => {
     const [imagePreview, setImagePreview] = useState(null);
     const [fileUrl, setFileUrl] = useState(null);
 
-    const handleFileChange = (event) => {
-        const file = event.target.files[0];
+    const handleFileChange = (file) => {
         setSelectedFile(file);
 
         // Preview image
@@ -67,11 +66,25 @@ const Card = () => {
         setFileUrl(null);
     };
 
+    const handleDrop = (event) => {
+        event.preventDefault();
+        const file = event.dataTransfer.files[0];
+        handleFileChange(file);
+    };
+
+    const handleDragOver = (event) => {
+        event.preventDefault();
+    };
+
     return (
         <div>
             <Toaster />
             <div className="min-h-[90vh] flex flex-col items-center justify-center p-5">
-                <div className="max-w-lg w-full bg-white p-12 rounded-xl shadow-2xl shadow-purple-600 ">
+                <div 
+                    className="max-w-lg w-full bg-white p-12 rounded-xl shadow-2xl shadow-purple-600"
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                >
                     <div className="relative mb-6">
                         {imagePreview ? (
                             <div className="mb-4 flex items-center justify-center">
@@ -79,17 +92,17 @@ const Card = () => {
                             </div>
                         ) : (
                             <div className="border-dashed border-2 border-gray-400 p-6 rounded-lg text-center">
-                                <span className="text-lg text-gray-500">No image selected</span>
+                                <span className="text-lg text-gray-500">Click Browse Image or Drop Image Here</span>
                             </div>
                         )}
                         <div className="flex items-center justify-center space-x-4">
                             <label htmlFor="file-upload" className="block mt-4">
-                                <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} />
+                                <input id="file-upload" type="file" className="hidden" onChange={(e) => handleFileChange(e.target.files[0])} />
                                 <button
                                     className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                                     onClick={() => document.getElementById('file-upload').click()}
                                 >
-                                    {imagePreview ? 'Change Image' : 'Select Image'}
+                                    {imagePreview ? 'Change Image' : 'Browse Image'}
                                 </button>
                             </label>
                             {imagePreview && (
@@ -118,7 +131,7 @@ const Card = () => {
                                 href={fileUrl}
                                 download="output.xlsx"
                                 className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                                onClick={()=>{setFileUrl(null)}}
+                                onClick={() => { setFileUrl(null); }}
                             >
                                 Download File
                             </a>
