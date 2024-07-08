@@ -31,7 +31,7 @@ const Card = () => {
 
         try {
             toast.loading("Hang on .. Analyzing Image");
-            const response = await axios.post('http://127.0.0.1:5000/upload', formData, {
+            const response = await axios.post('https://tablescribe-backend.onrender.com/upload', formData, {
                 responseType: 'blob'
             });
 
