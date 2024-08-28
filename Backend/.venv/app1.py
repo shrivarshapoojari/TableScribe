@@ -1,24 +1,18 @@
 from flask import Flask, request, send_file
-import layoutparser as lp
 from PIL import Image
-from pdf2image import convert_from_path
-from docx import Document
-import pytesseract
 import os
 import torch
 from transformers import AutoModelForObjectDetection, TableTransformerForObjectDetection
-from torchvision import transforms
 import numpy as np
 import easyocr
 import pandas as pd
 from tqdm.auto import tqdm
-import openpyxl
-import io
 from pdf2docx import Converter
 
 app = Flask(__name__)
 
-# Initialize the models for table detection and structure recognition
+
+ 
 table_model = AutoModelForObjectDetection.from_pretrained("microsoft/table-transformer-detection", revision="no_timm")
 structure_model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-structure-recognition-v1.1-all")
 val=0
@@ -110,11 +104,8 @@ def pdf_to_word(pdf_file_path, word_file_path):
      
     cv.close()
 
-# Example usage
-if __name__ == "__main__":
-    pdf_file_path = "example.pdf"
-    word_file_path = "output.docx"
-    pdf_to_word(pdf_file_path, word_file_path)
+ 
+ 
 
 def get_cell_coordinates_by_row(table_data):
     rows = [entry for entry in table_data if entry['label'] == 'table row']
@@ -158,7 +149,7 @@ def apply_ocr(cropped_table, cell_coordinates):
 
         data[idx] = row_text
 
-    print("Max number of columns:", max_num_columns)
+    
 
     for row, row_data in data.copy().items():
         if len(row_data) != max_num_columns:
@@ -170,62 +161,56 @@ def apply_ocr(cropped_table, cell_coordinates):
 
 @app.route('/process_pdf', methods=['POST'])
 def process_pdf():
-
- 
-    
     file = request.files['file']
     if file and file.filename.endswith('.pdf'):
-        # Save the PDF file
+        
         pdf_path = 'input.pdf'
         file.save(pdf_path)
 
-        # Convert PDF to a list of images (one per page)
+       
         images = convert_from_path(pdf_path)
 
-    if val==1:
-        model = lp.Detectron2LayoutModel(
+    
+        layout_model = lp.Detectron2LayoutModel(
             'lp://PubLayNet/faster_rcnn_R_50_FPN_3x/config',
             extra_config=["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.5]
         )
 
-        # Directory to save processed images (optional)
+        
         output_dir = 'processed_images'
         os.makedirs(output_dir, exist_ok=True)
 
-        # Create a new Word document
+        
         doc = Document()
-
-        # Process each image (page)
+ 
         for i, image in enumerate(images):
             image = image.convert("RGB")
-            layout = model.detect(image)
+            layout = layout_model.detect(image)
             
-            # Save the processed image (optional)
+            
             output_image_path = os.path.join(output_dir, f'page_{i+1}.png')
             image.save(output_image_path)
             
-            # Write the page number to the Word document
+             
             doc.add_paragraph(f'Page {i+1}')
             
             for element in layout:
-                # Get the coordinates of the detected element
+                 
                 x1, y1, x2, y2 = element.coordinates
                 
-                # Crop the detected region from the image
+               
                 cropped_image = image.crop((x1, y1, x2, y2))
+              
                 
-                # Perform OCR to extract text from the cropped region
-                extracted_text = pytesseract.image_to_string(cropped_image, lang='eng')
-                
-                # Determine how to format the text based on the element type
+                 
                 label = element.type
                 
-                if label == "Title":
+                if label == "Text":
+                    extracted_text = pytesseract.image_to_string(cropped_image, lang='eng')
                     doc.add_heading(extracted_text.strip(), level=1)
-                elif label == "Text":
-                    doc.add_paragraph(extracted_text.strip())
+                
                 elif label == "Table":
-                    # Extract table using table extraction code
+                    
                     width, height = cropped_image.size
                     resized_img = cropped_image.resize((int(0.6 * width), int(0.6 * height)))
 
@@ -255,9 +240,9 @@ def process_pdf():
                             cell_coordinates = get_cell_coordinates_by_row(table_objects)
 
                             data = apply_ocr(table["image"], cell_coordinates)
-                            # save_as_xlsx(data)
+                            
 
-                            # Add the extracted table as a table in the Word document
+                            
                             rows = list(data.values())
                             table = doc.add_table(rows=len(rows), cols=len(rows[0]))
 
@@ -267,12 +252,12 @@ def process_pdf():
                 else:
                     doc.add_paragraph(f'{label}:\n{extracted_text.strip()}')
 
-        # Save the Word document
+       
         output_doc_path = 'output_processed.docx'
         doc.save(output_doc_path)
         return send_file(output_doc_path, as_attachment=True, download_name='output_processed.docx')
     
-    else:
+   
 
          
 

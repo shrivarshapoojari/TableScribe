@@ -1,10 +1,11 @@
-from flask import Flask, request, send_file
+from flask import Flask, request,jsonify, send_file
 from flask_cors import CORS
 import os
 import torch
 from PIL import Image
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from pdf2docx import Converter
 from transformers import AutoModelForObjectDetection, TableTransformerForObjectDetection
 from torchvision import transforms
 import numpy as np
@@ -12,7 +13,7 @@ import easyocr
 import pandas as pd
 from tqdm.auto import tqdm
 import openpyxl
-import fitz  # PyMuPDF
+import fitz   
 
 app = Flask(__name__)
 CORS(app)
@@ -31,7 +32,14 @@ def initialize_models():
     structure_model.to(device)
 
 initialize_models()
-
+def initialize() :
+    import layoutparser as lp
+    from pdf2image import convert_from_path
+    from docx import Document
+    import pytesseract
+    import openpyxl
+    import io
+    from torchvision import transforms
 class MaxResize(object):
     def __init__(self, max_size=800):
         self.max_size = max_size
@@ -69,7 +77,50 @@ def outputs_to_objects(outputs, img_size, id2label):
                             'bbox': [float(elem) for elem in bbox]})
 
     return objects
+@app.route('/process_ pdf', methods=['POST'])
+def upload_pdf():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
 
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if file:
+        # Define paths for the uploaded PDF and the output Word file
+        pdf_path = os.path.join(os.getcwd(), 'uploaded.pdf')
+        word_path = os.path.join(os.getcwd(), 'output.docx')
+        
+        try:
+            # Save the uploaded PDF to a temporary file
+            file.save(pdf_path)
+
+            # Convert the PDF to Word
+            pdf_to_word(pdf_path, word_path)
+
+            # Check if the Word file was created successfully
+            if not os.path.exists(word_path):
+                return jsonify({'error': 'Word file was not created'}), 500
+
+            # Send the Word document as a response
+            return send_file(word_path, as_attachment=True, download_name='converted.docx')
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+        finally:
+            # Clean up the uploaded PDF and generated Word file after sending the response
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+             
+
+    return jsonify({'error': 'File upload failed'}), 500
+
+def pdf_to_word(pdf_file, word_file):
+    """Convert PDF to Word using pdf2docx"""
+    cv = Converter(pdf_file)
+    cv.convert(word_file, start=0, end=None)
+    cv.close()
 def objects_to_crops(img, tokens, objects, class_thresholds, padding=50):
     table_crops = []
     for obj in objects:
@@ -159,6 +210,7 @@ def save_as_xlsx(data, sheet_name, workbook):
 
     for row, row_text in data.items():
         worksheet.append(row_text)
+
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -256,8 +308,108 @@ def upload_file():
 
         return send_file(output_path, as_attachment=True)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+
+
+
+@app.route('/process_pdf', methods=['POST'])
+def process_pdf():
+    file = request.files['file']
+    if file and file.filename.endswith('.pdf'):
+        
+        pdf_path = 'input.pdf'
+        file.save(pdf_path)
+
+       
+        images = convert_from_path(pdf_path)
+
+    
+        layout_model = lp.Detectron2LayoutModel(
+            'lp://PubLayNet/faster_rcnn_R_50_FPN_3x/config',
+            extra_config=["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.5]
+        )
+
+        
+        output_dir = 'processed_images'
+        os.makedirs(output_dir, exist_ok=True)
+
+        
+        doc = Document()
+ 
+        for i, image in enumerate(images):
+            image = image.convert("RGB")
+            layout = layout_model.detect(image)
+            
+            
+            output_image_path = os.path.join(output_dir, f'page_{i+1}.png')
+            image.save(output_image_path)
+            
+             
+            doc.add_paragraph(f'Page {i+1}')
+            
+            for element in layout:
+                 
+                x1, y1, x2, y2 = element.coordinates
+                
+               
+                cropped_image = image.crop((x1, y1, x2, y2))
+              
+                
+                 
+                label = element.type
+                
+                if label == "Text":
+                    extracted_text = pytesseract.image_to_string(cropped_image, lang='eng')
+                    doc.add_heading(extracted_text.strip(), level=1)
+                
+                elif label == "Table":
+                    
+                    width, height = cropped_image.size
+                    resized_img = cropped_image.resize((int(0.6 * width), int(0.6 * height)))
+
+                    detection_transform = transforms.Compose([
+                        MaxResize(800),
+                        transforms.ToTensor(),
+                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+                    ])
+
+                    pixel_values = detection_transform(cropped_image).unsqueeze(0)
+                    pixel_values = pixel_values.to(device)
+
+                    with torch.no_grad():
+                        outputs = table_model(pixel_values)
+
+                    id2label = table_model.config.id2label
+                    id2label[len(table_model.config.id2label)] = 'no object'
+
+                    img_objects = outputs_to_objects(outputs, resized_img.size, id2label)
+
+                    for obj in img_objects:
+                        cropped_tables = objects_to_crops(cropped_image, [], img_objects, {'table': 0.6, 'table rotated': 0.5})
+                        for table in cropped_tables:
+                            table_data = structure_model(detection_transform(table["image"]).unsqueeze(0).to(device))
+
+                            table_objects = outputs_to_objects(table_data, table["image"].size, id2label)
+                            cell_coordinates = get_cell_coordinates_by_row(table_objects)
+
+                            data = apply_ocr(table["image"], cell_coordinates)
+                            
+
+                            
+                            rows = list(data.values())
+                            table = doc.add_table(rows=len(rows), cols=len(rows[0]))
+
+                            for row_idx, row in enumerate(rows):
+                                for col_idx, cell in enumerate(row):
+                                    table.cell(row_idx, col_idx).text = cell
+                else:
+                    doc.add_paragraph(f'{label}:\n{extracted_text.strip()}')
+
+       
+        output_doc_path = 'output_processed.docx'
+        doc.save(output_doc_path)
+        return send_file(output_doc_path, as_attachment=True, download_name='output_processed.docx')
+    
+
 
 
 if __name__ == '__main__':
