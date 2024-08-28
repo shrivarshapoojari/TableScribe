@@ -104,7 +104,7 @@ def visualize_detected_tables(img, det_tables, out_path=None):
 
     return fig
 
-def objects_to_crops(img, tokens, objects, class_thresholds, padding=10):
+def objects_to_crops(img, tokens, objects, class_thresholds, padding=30):
     table_crops = []
     for obj in objects:
         if obj['score'] < class_thresholds[obj['label']]:

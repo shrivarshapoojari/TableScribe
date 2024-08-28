@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import toast, { Toaster } from 'react-hot-toast';
+import toast, { ToastBar, Toaster } from 'react-hot-toast';
 
 const Card = () => {
     const [selectedFile, setSelectedFile] = useState(null);
@@ -8,11 +8,18 @@ const Card = () => {
     const [fileUrl, setFileUrl] = useState(null);
 
     const handleFileChange = (file) => {
-        if (file && file.type === 'application/pdf') {
-            setSelectedFile(file);
+        setSelectedFile(file);
+
+        if (file.type === 'application/pdf') {
             setFilePreview(URL.createObjectURL(file));
         } else {
-            toast.error("Please upload a PDF file.");
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setFilePreview(reader.result);
+            };
+            if (file) {
+                reader.readAsDataURL(file);
+            }
         }
     };
 
@@ -84,21 +91,25 @@ const Card = () => {
                     <div className="relative mb-6">
                         {filePreview ? (
                             <div className="mb-4 flex items-center justify-center">
-                                <embed src={filePreview} type="application/pdf" className="rounded-lg max-h-60 mx-auto mb-4" />
+                                {selectedFile.type === 'application/pdf' ? (
+                                    <embed src={filePreview} type="application/pdf" className="rounded-lg max-h-60 mx-auto mb-4" />
+                                ) : (
+                                    <img src={filePreview} alt="Uploaded" className="rounded-lg max-h-60 mx-auto mb-4" />
+                                )}
                             </div>
                         ) : (
                             <div className="border-dashed border-2 border-gray-400 p-6 rounded-lg text-center">
-                                <span className="text-lg text-gray-500">Click Browse File or Drop PDF Here</span>
+                                <span className="text-lg text-gray-500">Click Browse File or Drop File Here</span>
                             </div>
                         )}
                         <div className="flex items-center justify-center space-x-4">
                             <label htmlFor="file-upload" className="block mt-4">
-                                <input id="file-upload" type="file" className="hidden" accept="application/pdf" onChange={(e) => handleFileChange(e.target.files[0])} />
+                                <input id="file-upload" type="file" className="hidden" onChange={(e) => handleFileChange(e.target.files[0])} />
                                 <button
                                     className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                                     onClick={() => document.getElementById('file-upload').click()}
                                 >
-                                    {filePreview ? 'Change File' : 'Browse PDF'}
+                                    {filePreview ? 'Change File' : 'Browse File'}
                                 </button>
                             </label>
                             {filePreview && (

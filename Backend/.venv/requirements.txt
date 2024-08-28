@@ -11,3 +11,4 @@ flask-cors
 openpyxl
 opencv-python
 Gunicorn
+pymupdf

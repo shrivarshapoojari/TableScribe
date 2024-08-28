@@ -1,4 +1,11 @@
-Wendy,5'6
-Michael,5'9
-Rachael,5'3
-Allen,5'1
+No.,Title,Author,Subject,Publisher,Quantity,Price
+Data Structure,Lipschute,DS,McGraw,217.00,,
+DOS Guide,NORTRON,OS,PH,3,"175,00",
+3,Turbo C++,Robort Lafore,Prog,Galgotia,5,270.00
+Dbase Dummies,Palmer,DBMS,PustakM,130.00,,
+5,Mastering Windows,Cowart,OS,BPB,225.00,
+6,Computer Studies,French,FND,Galgotia,2,75.00
+COBOL,Stern,Prog,John W,J000.0,,
+8,Guide Network,Freed,NET,Zpress,3,200.00
+Basic for Beginners,Norton,Prog,BPB,3,40.00,
+10,Advanced Pascal,Schldt,Prog,McGraw,350.00,

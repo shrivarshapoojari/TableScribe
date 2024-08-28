@@ -12,7 +12,6 @@ import easyocr
 import pandas as pd
 from tqdm.auto import tqdm
 import openpyxl
-import fitz  # PyMuPDF
 
 app = Flask(__name__)
 CORS(app)
@@ -30,6 +29,7 @@ def initialize_models():
     structure_model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-structure-recognition-v1.1-all")
     structure_model.to(device)
 
+# Call the initialization function
 initialize_models()
 
 class MaxResize(object):
@@ -154,11 +154,19 @@ def apply_ocr(cropped_table, cell_coordinates):
 
     return data
 
-def save_as_xlsx(data, sheet_name, workbook):
-    worksheet = workbook.create_sheet(title=sheet_name)
+def save_as_xlsx(data):
+    output_xlsx = os.path.join("output", "output.xlsx")
+    
+    # Create a workbook and add a worksheet
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
 
+    # Write data to the worksheet
     for row, row_text in data.items():
         worksheet.append(row_text)
+    
+    # Save the workbook to a file
+    workbook.save(output_xlsx)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -169,96 +177,68 @@ def upload_file():
     if file.filename == '':
         return 'No selected file', 400
     if file:
-        # Create the workbook to store all sheets (tables)
-        workbook = openpyxl.Workbook()
-        workbook.remove(workbook.active)  # Remove the default sheet
+        img = Image.open(file.stream).convert("RGB")
 
-        # Determine if the file is a PDF
-        if file.filename.lower().endswith('.pdf'):
-            # Read file content into memory
-            file_content = file.read()
+        # Processing the image
+        width, height = img.size
+        resized_img = img.resize((int(0.6 * width), int(0.6 * height)))
 
-            # Open the PDF from the bytes
-            pdf = fitz.open(stream=file_content, filetype="pdf")
-            for page_num in range(len(pdf)):
-                page = pdf.load_page(page_num)
-                pix = page.get_pixmap()
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                img = img.convert("RGB")
+        detection_transform = transforms.Compose([
+            MaxResize(800),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
 
-                # Processing the image (same as before)
-                width, height = img.size
-                resized_img = img.resize((int(0.6 * width), int(0.6 * height)))
+        pixel_values = detection_transform(img).unsqueeze(0)
+        pixel_values = pixel_values.to(device)
 
-                detection_transform = transforms.Compose([
-                    MaxResize(800),
-                    transforms.ToTensor(),
-                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                ])
+        with torch.no_grad():
+            outputs = model(pixel_values)
 
-                pixel_values = detection_transform(img).unsqueeze(0)
-                pixel_values = pixel_values.to(device)
+        id2label = model.config.id2label
+        id2label[len(model.config.id2label)] = "no object"
 
-                with torch.no_grad():
-                    outputs = model(pixel_values)
+        objects = outputs_to_objects(outputs, img.size, id2label)
 
-                id2label = model.config.id2label
-                id2label[len(model.config.id2label)] = "no object"
+        tokens = []
+        detection_class_thresholds = {
+            "table": 0.5,
+            "table rotated": 0.5,
+            "no object": 10
+        }
 
-                objects = outputs_to_objects(outputs, img.size, id2label)
+        tables_crops = objects_to_crops(img, tokens, objects, detection_class_thresholds, padding=50)
 
-                tokens = []
-                detection_class_thresholds = {
-                    "table": 0.5,
-                    "table rotated": 0.5,
-                    "no object": 10
-                }
+        if not tables_crops:
+            return 'No tables detected', 400
 
-                tables_crops = objects_to_crops(img, tokens, objects, detection_class_thresholds, padding=50)
+        cropped_table = tables_crops[0]['image'].convert("RGB")
 
-                if not tables_crops:
-                    continue  # Skip to the next page if no tables are detected
+        structure_transform = transforms.Compose([
+            MaxResize(1000),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
 
-                for idx, table_crop in enumerate(tables_crops):
-                    cropped_table = table_crop['image'].convert("RGB")
+        pixel_values = structure_transform(cropped_table).unsqueeze(0)
+        pixel_values = pixel_values.to(device)
 
-                    structure_transform = transforms.Compose([
-                        MaxResize(1000),
-                        transforms.ToTensor(),
-                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                    ])
+        with torch.no_grad():
+            outputs = structure_model(pixel_values)
 
-                    structure_pixel_values = structure_transform(cropped_table).unsqueeze(0)
-                    structure_pixel_values = structure_pixel_values.to(device)
+        structure_id2label = structure_model.config.id2label
+        structure_id2label[len(structure_id2label)] = "no object"
 
-                    with torch.no_grad():
-                        outputs = structure_model(structure_pixel_values)
+        cells = outputs_to_objects(outputs, cropped_table.size, structure_id2label)
+        cell_coordinates = get_cell_coordinates_by_row(cells)
 
-                    id2label_structure = structure_model.config.id2label
-                    id2label_structure[len(structure_model.config.id2label)] = "no object"
+        # Pass cropped_table and cell_coordinates to apply_ocr function
+        data = apply_ocr(cropped_table, cell_coordinates)
+          
+        # Save as XLSX
+        save_as_xlsx(data)
 
-                    table_structure = outputs_to_objects(outputs, cropped_table.size, id2label_structure)
+        return send_file(os.path.join("output", "output.xlsx"), as_attachment=True)
 
-                    cell_coordinates = get_cell_coordinates_by_row(table_structure)
-
-                    data = apply_ocr(cropped_table, cell_coordinates)
-
-                    # Save each detected table in a new sheet
-                    sheet_name = f"Table_Page{page_num + 1}_Table{idx + 1}"
-                    save_as_xlsx(data, sheet_name, workbook)
-
-            pdf.close()
-
-        # Save the workbook
-        output_path = os.path.join(os.getcwd(), "tables_detected.xlsx")
-        workbook.save(output_path)
-        
-
-        return send_file(output_path, as_attachment=True)
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
-
-if __name__ == '__main__':
+if __name__=='main':
     app.run(debug=True)
