@@ -14,6 +14,9 @@ import pandas as pd
 from tqdm.auto import tqdm
 import openpyxl
 import fitz   
+import contextlib
+import os
+import logging
 
 app = Flask(__name__)
 CORS(app)
@@ -77,8 +80,10 @@ def outputs_to_objects(outputs, img_size, id2label):
                             'bbox': [float(elem) for elem in bbox]})
 
     return objects
+
 @app.route('/process_ pdf', methods=['POST'])
 def upload_pdf():
+
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
 
@@ -117,10 +122,14 @@ def upload_pdf():
     return jsonify({'error': 'File upload failed'}), 500
 
 def pdf_to_word(pdf_file, word_file):
-    """Convert PDF to Word using pdf2docx"""
-    cv = Converter(pdf_file)
-    cv.convert(word_file, start=0, end=None)
-    cv.close()
+    logging.disable(logging.CRITICAL)  
+    try:
+        with contextlib.redirect_stdout(open(os.devnull, 'w')), contextlib.redirect_stderr(open(os.devnull, 'w')):
+            cv = Converter(pdf_file)
+            cv.convert(word_file, start=0, end=None)
+            cv.close()
+    except Exception as e:
+        return "ERROR"
 def objects_to_crops(img, tokens, objects, class_thresholds, padding=50):
     table_crops = []
     for obj in objects:
@@ -358,8 +367,8 @@ def process_pdf():
                 label = element.type
                 
                 if label == "Text":
-                    extracted_text = pytesseract.image_to_string(cropped_image, lang='eng')
-                    doc.add_heading(extracted_text.strip(), level=1)
+                    extracted_text = easyocr.image_to_string(cropped_image, lang='eng')
+                    doc.add_text(extracted_text.strip(), x1,y1,x2,y2)
                 
                 elif label == "Table":
                     
@@ -405,9 +414,9 @@ def process_pdf():
                     doc.add_paragraph(f'{label}:\n{extracted_text.strip()}')
 
        
-        output_doc_path = 'output_processed.docx'
+        output_doc_path = 'output.docx'
         doc.save(output_doc_path)
-        return send_file(output_doc_path, as_attachment=True, download_name='output_processed.docx')
+        return send_file(output_doc_path, as_attachment=True, download_name='output.docx')
     
 
 
